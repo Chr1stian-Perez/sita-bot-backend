@@ -1,3 +1,4 @@
+//version de chat github
 const express = require("express")
 const router = express.Router()
 const { streamChat } = require("../services/gemini")
