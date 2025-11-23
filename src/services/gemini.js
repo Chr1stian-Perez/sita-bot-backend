@@ -1,7 +1,6 @@
 async function callGeminiAPI(prompt, conversationHistory = []) {
-  const models = [process.env.GEMINI_MODEL || "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-
-  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean)
+  const models = [process.env.GEMINI_MODEL || "gemini-2.0-flash-exp", "gemini-2.0-flash", "gemini-1.5-flash"]
+  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean)
 
   for (const apiKey of apiKeys) {
     for (const model of models) {
@@ -53,7 +52,7 @@ async function callGeminiAPI(prompt, conversationHistory = []) {
           data.candidates?.[0]?.content?.parts?.[0]?.text || data.candidates?.[0]?.content?.text || data.text || null
 
         if (textResponse) {
-          console.log(`[Gemini] ✅ Success with model: ${model}`)
+          console.log(`[Gemini] Success with model: ${model}`)
           return textResponse
         }
       } catch (error) {
@@ -66,4 +65,83 @@ async function callGeminiAPI(prompt, conversationHistory = []) {
   throw new Error("All Gemini API attempts failed")
 }
 
-module.exports = { callGeminiAPI }
+async function streamChat(messages, userId, res) {
+  const models = [process.env.GEMINI_MODEL || "gemini-2.0-flash-exp", "gemini-2.0-flash", "gemini-1.5-flash"]
+  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean)
+
+  for (const apiKey of apiKeys) {
+    for (const model of models) {
+      try {
+        console.log(`[Gemini Stream] Trying model: ${model}`)
+
+        const contents = messages.map((msg) => ({
+          role: msg.role === "user" ? "user" : "model",
+          parts: [{ text: msg.content }],
+        }))
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents,
+              generationConfig: {
+                temperature: 0.3,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 2048,
+              },
+            }),
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          console.error(`[Gemini Stream] Error with ${model}:`, errorData)
+          continue
+        }
+
+        const reader = response.body
+        let buffer = ""
+
+        for await (const chunk of reader) {
+          buffer += chunk.toString()
+          const lines = buffer.split("\n")
+          buffer = lines.pop() || ""
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const jsonStr = line.slice(6)
+              if (jsonStr === "[DONE]") continue
+
+              try {
+                const data = JSON.parse(jsonStr)
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+
+                if (text) {
+                  res.write(`data: ${JSON.stringify({ content: text })}\n\n`)
+                }
+              } catch (e) {
+                console.error("[Gemini Stream] Parse error:", e)
+              }
+            }
+          }
+        }
+
+        res.write("data: [DONE]\n\n")
+        res.end()
+        console.log(`[Gemini Stream] Success with model: ${model}`)
+        return
+      } catch (error) {
+        console.error(`[Gemini Stream] Failed with ${model}:`, error.message)
+        continue
+      }
+    }
+  }
+
+  res.write(`data: ${JSON.stringify({ error: "All Gemini API attempts failed" })}\n\n`)
+  res.end()
+}
+
+module.exports = { callGeminiAPI, streamChat }
