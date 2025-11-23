@@ -1,37 +1,32 @@
-const express = require("express")
-const router = express.Router()
-const { callGeminiAPI } = require("../services/gemini")
-const { getUserCredits, deductCredits } = require("../services/rds")
-const { saveChatToS3 } = require("../services/s3")
+import express from "express"
+import { callGeminiAPI } from "../services/gemini.js"
 
-router.post("/", async (req, res) => {
+const router = express.Router()
+
+router.post("/chat", async (req, res) => {
   try {
-    const { message, conversationHistory, chatId } = req.body
-    const token = req.headers.authorization?.replace("Bearer ", "")
+    const { message } = req.body
+    const userId = req.user.userId
 
     if (!message) {
-      return res.status(400).json({ error: "Message is required" })
+      return res.status(400).json({ error: "Mensaje vacío" })
     }
 
-    const userId = token && token !== "demo-token" ? token : "demo-user"
+    // Llamar a Gemini API
+    const response = await callGeminiAPI(message)
 
-    const credits = await getUserCredits(userId)
-    if (credits <= 0) {
-      return res.status(403).json({ error: "Insufficient credits" })
-    }
-
-    const responseText = await callGeminiAPI(message, conversationHistory || [])
-
-    await deductCredits(userId, 1)
+    // Log a S3 (en EC2)
+    // await logChatToS3(userId, message, response);
 
     res.json({
-      message: responseText,
-      creditsRemaining: credits - 1,
+      success: true,
+      message: response,
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
-    console.error("[API Chat Error]:", error)
-    res.status(500).json({ error: "Failed to process chat", details: error.message })
+    console.error("Error en /api/chat:", error)
+    res.status(500).json({ error: "Error procesando mensaje" })
   }
 })
 
-module.exports = router
+export { router as chatRoutes }
