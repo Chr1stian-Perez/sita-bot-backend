@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 8000
 
 app.use(
   cors({
-    origin: "*",
+    origin: ["https://d3ay28hwrswqzz.cloudfront.net", "http://localhost:3000"],
     credentials: true,
   }),
 )

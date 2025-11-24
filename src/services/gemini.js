@@ -1,6 +1,7 @@
 async function callGeminiAPI(prompt, conversationHistory = []) {
-  const models = [process.env.GEMINI_MODEL || "gemini-2.0-flash-exp", "gemini-2.0-flash", "gemini-1.5-flash"]
-  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean)
+  const models = [process.env.GEMINI_MODEL || "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+
+  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean)
 
   for (const apiKey of apiKeys) {
     for (const model of models) {
@@ -52,7 +53,7 @@ async function callGeminiAPI(prompt, conversationHistory = []) {
           data.candidates?.[0]?.content?.parts?.[0]?.text || data.candidates?.[0]?.content?.text || data.text || null
 
         if (textResponse) {
-          console.log(`[Gemini] Success with model: ${model}`)
+          console.log(`[Gemini] ✅ Success with model: ${model}`)
           return textResponse
         }
       } catch (error) {
@@ -66,8 +67,8 @@ async function callGeminiAPI(prompt, conversationHistory = []) {
 }
 
 async function streamChat(messages, userId, res) {
-  const models = [process.env.GEMINI_MODEL || "gemini-2.0-flash-exp", "gemini-2.0-flash", "gemini-1.5-flash"]
-  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean)
+  const models = [process.env.GEMINI_MODEL || "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+  const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean)
 
   for (const apiKey of apiKeys) {
     for (const model of models) {
@@ -87,7 +88,7 @@ async function streamChat(messages, userId, res) {
             body: JSON.stringify({
               contents,
               generationConfig: {
-                temperature: 0.3,
+                temperature: 0.7,
                 topK: 40,
                 topP: 0.95,
                 maxOutputTokens: 2048,
@@ -102,28 +103,40 @@ async function streamChat(messages, userId, res) {
           continue
         }
 
-        const reader = response.body
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
         let buffer = ""
+        let chunkCount = 0
 
-        for await (const chunk of reader) {
-          buffer += chunk.toString()
+        console.log("[Gemini Stream] Starting to read chunks...")
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            console.log(`[Gemini Stream] Stream ended. Total chunks: ${chunkCount}`)
+            break
+          }
+
+          buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split("\n")
           buffer = lines.pop() || ""
 
           for (const line of lines) {
             if (line.startsWith("data: ")) {
-              const jsonStr = line.slice(6)
-              if (jsonStr === "[DONE]") continue
+              const jsonStr = line.slice(6).trim()
+              if (!jsonStr || jsonStr === "[DONE]") continue
 
               try {
                 const data = JSON.parse(jsonStr)
                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text
 
                 if (text) {
+                  chunkCount++
+                  console.log(`[Gemini Stream] Chunk ${chunkCount}: ${text.substring(0, 50)}...`)
                   res.write(`data: ${JSON.stringify({ content: text })}\n\n`)
                 }
               } catch (e) {
-                console.error("[Gemini Stream] Parse error:", e)
+                console.error("[Gemini Stream] Parse error:", e.message)
               }
             }
           }
@@ -131,7 +144,7 @@ async function streamChat(messages, userId, res) {
 
         res.write("data: [DONE]\n\n")
         res.end()
-        console.log(`[Gemini Stream] Success with model: ${model}`)
+        console.log(`[Gemini Stream] ✅ Success with model: ${model}`)
         return
       } catch (error) {
         console.error(`[Gemini Stream] Failed with ${model}:`, error.message)

@@ -18,8 +18,8 @@ async function getUserCredits(userId) {
     const result = await pool.query("SELECT credits FROM user_credits WHERE user_id = $1", [userId])
 
     if (result.rows.length === 0) {
-      await pool.query("INSERT INTO user_credits (user_id, credits) VALUES ($1, $2)", [userId, 1000])
-      return 1000
+      await pool.query("INSERT INTO user_credits (user_id, credits) VALUES ($1, $2)", [userId, 50])
+      return 50
     }
 
     return result.rows[0].credits

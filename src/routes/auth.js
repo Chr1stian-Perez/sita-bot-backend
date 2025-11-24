@@ -8,7 +8,6 @@ const COGNITO_CLIENT_SECRET = process.env.COGNITO_CLIENT_SECRET;
 const COGNITO_REGION = process.env.COGNITO_REGION || 'us-east-1';
 const COGNITO_REDIRECT_URI = process.env.COGNITO_REDIRECT_URI;
 
-// GET /api/auth/callback - Exchange authorization code for tokens
 router.get('/callback', async (req, res) => {
   try {
     const { code } = req.query;
@@ -19,7 +18,7 @@ router.get('/callback', async (req, res) => {
 
     console.log('[AUTH] Exchanging code for tokens...');
 
-    // Exchange code for tokens
+    // Construct URL properly - COGNITO_DOMAIN should NOT include https://
     const tokenUrl = `https://${COGNITO_DOMAIN}/oauth2/token`;
     
     const params = new URLSearchParams({
@@ -49,7 +48,6 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-// POST /api/auth/validate - Validate access token
 router.post('/validate', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -62,7 +60,6 @@ router.post('/validate', async (req, res) => {
 
     console.log('[AUTH] Validating token...');
 
-    // Validate token with Cognito userinfo endpoint
     const userInfoUrl = `https://${COGNITO_DOMAIN}/oauth2/userInfo`;
     
     const response = await axios.get(userInfoUrl, {

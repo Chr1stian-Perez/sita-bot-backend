@@ -1,11 +1,16 @@
 const express = require("express")
 const router = express.Router()
 const { getUserCredits } = require("../services/rds")
+const { extractUserIdFromToken } = require("../utils/jwt")
 
 router.get("/", async (req, res) => {
   try {
     const token = req.headers.authorization?.replace("Bearer ", "")
-    const userId = token || "demo-user"
+    const userId = extractUserIdFromToken(token)
+
+    if (!userId) {
+      return res.status(401).json({ error: "Invalid token" })
+    }
 
     const credits = await getUserCredits(userId)
     res.json({ credits })

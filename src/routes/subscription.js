@@ -1,3 +1,4 @@
+const { extractUserIdFromToken } = require("../utils/jwt")
 const express = require("express")
 const router = express.Router()
 const { publishUpgradeEvent } = require("../services/eventbridge")
@@ -6,7 +7,7 @@ router.post("/upgrade", async (req, res) => {
   try {
     const { planType } = req.body
     const token = req.headers.authorization?.replace("Bearer ", "")
-    const userId = token || "demo-user"
+    const userId = extractUserIdFromToken(token)
 
     const creditsToAdd = planType === "pro" ? 1000 : planType === "enterprise" ? 10000 : 0
 
