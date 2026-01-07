@@ -42,4 +42,4 @@ async function deductCredits(userId, amount) {
   }
 }
 
-module.exports = { getUserCredits, deductCredits }
+module.exports = {pool, getUserCredits, deductCredits }

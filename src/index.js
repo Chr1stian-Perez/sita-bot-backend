@@ -6,6 +6,7 @@ const chatsRoutes = require("./routes/chats")
 const creditsRoutes = require("./routes/credits")
 const subscriptionRoutes = require("./routes/subscription")
 const authRoutes = require("./routes/auth")
+const adminRoutes = require("./routes/admin")
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -27,6 +28,7 @@ app.use("/api/chat", chatRoutes)
 app.use("/api/chats", chatsRoutes)
 app.use("/api/credits", creditsRoutes)
 app.use("/api/subscription", subscriptionRoutes)
+app.use("/api/admin", adminRoutes)
 
 app.use((err, req, res, next) => {
   console.error("[Server Error]:", err)
