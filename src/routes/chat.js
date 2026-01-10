@@ -2,7 +2,8 @@ const express = require("express")
 const router = express.Router()
 const { streamChat } = require("../services/gemini")
 const { extractUserIdFromToken } = require("../utils/jwt")
-const { deductCredits } = require("../services/rds")
+const { deductCredits, getUserCredits } = require("../services/rds")
+const { logUserActivity } = require("../services/admin-rds")
 
 router.post("/", async (req, res) => {
   try {
@@ -20,15 +21,24 @@ router.post("/", async (req, res) => {
 
     console.log("[API Chat] Processing chat request for user:", userId)
 
+    let creditsBefore = 0
+    try {
+      creditsBefore = await getUserCredits(userId)
+    } catch (error) {
+      console.warn("[API Chat] Could not get credits before:", error)
+    }
+
     try {
       await deductCredits(userId, 1)
       console.log("[API Chat] Deducted 1 credit for user:", userId)
+
+      const creditsAfter = creditsBefore - 1
+      await logUserActivity(userId, "CHAT_MESSAGE", `Sent ${messages.length} messages`, creditsBefore, creditsAfter)
     } catch (error) {
       console.error("[API Chat] Failed to deduct credits:", error)
       return res.status(402).json({ error: "Insufficient credits" })
     }
 
-    // Set headers for SSE streaming
     res.setHeader("Content-Type", "text/event-stream")
     res.setHeader("Cache-Control", "no-cache")
     res.setHeader("Connection", "keep-alive")

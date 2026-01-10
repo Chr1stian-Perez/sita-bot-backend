@@ -1,82 +1,97 @@
-const express = require('express');
-const axios = require('axios');
-const router = express.Router();
+const express = require("express")
+const axios = require("axios")
+const { logUserActivity } = require("../services/admin-rds")
+const { extractUserIdFromToken } = require("../utils/jwt")
 
-const COGNITO_DOMAIN = process.env.COGNITO_DOMAIN;
-const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID;
-const COGNITO_CLIENT_SECRET = process.env.COGNITO_CLIENT_SECRET;
-const COGNITO_REGION = process.env.COGNITO_REGION || 'us-east-1';
-const COGNITO_REDIRECT_URI = process.env.COGNITO_REDIRECT_URI;
+const router = express.Router()
 
-router.get('/callback', async (req, res) => {
+// GET /api/auth/callback - Intercambiar código por tokens
+router.get("/callback", async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code } = req.query
 
     if (!code) {
-      return res.status(400).json({ error: 'Authorization code is required' });
+      return res.status(400).json({ error: "No authorization code provided" })
     }
 
-    console.log('[AUTH] Exchanging code for tokens...');
+    const cognitoDomain = process.env.COGNITO_DOMAIN
+    const clientId = process.env.COGNITO_CLIENT_ID
+    const clientSecret = process.env.COGNITO_CLIENT_SECRET
+    const redirectUri = process.env.COGNITO_REDIRECT_URI || "https://d3ay28hwrswqzz.cloudfront.net/auth/callback"
 
-    // Construct URL properly - COGNITO_DOMAIN should NOT include https://
-    const tokenUrl = `https://${COGNITO_DOMAIN}/oauth2/token`;
-    
+    // Intercambiar código por tokens
+    const tokenUrl = `https://${cognitoDomain}/oauth2/token`
+
     const params = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: COGNITO_CLIENT_ID,
+      grant_type: "authorization_code",
+      client_id: clientId,
       code: code,
-      redirect_uri: COGNITO_REDIRECT_URI
-    });
+      redirect_uri: redirectUri,
+    })
 
-    const auth = Buffer.from(`${COGNITO_CLIENT_ID}:${COGNITO_CLIENT_SECRET}`).toString('base64');
+    const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
 
     const response = await axios.post(tokenUrl, params.toString(), {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${auth}`
-      }
-    });
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${authHeader}`,
+      },
+    })
 
-    console.log('[AUTH] Tokens obtained successfully');
-    res.json(response.data);
-  } catch (error) {
-    console.error('[AUTH] Callback error:', error.response?.data || error.message);
-    res.status(500).json({ 
-      error: 'Failed to exchange authorization code',
-      details: error.response?.data || error.message
-    });
-  }
-});
-
-router.post('/validate', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
+    try {
+      const userId = extractUserIdFromToken(response.data.access_token)
+      await logUserActivity(userId, "USER_LOGIN", "OAuth2 login", 0, 0)
+    } catch (logError) {
+      console.error("[Auth] Failed to log login activity:", logError)
     }
 
-    const token = authHeader.substring(7);
+    res.json({
+      access_token: response.data.access_token,
+      id_token: response.data.id_token,
+      refresh_token: response.data.refresh_token,
+      expires_in: response.data.expires_in,
+    })
+  } catch (error) {
+    console.error("[v0] Error en /api/auth/callback:", error.response?.data || error.message)
+    res.status(500).json({
+      error: "Failed to exchange code for tokens",
+      details: error.response?.data || error.message,
+    })
+  }
+})
 
-    console.log('[AUTH] Validating token...');
+// POST /api/auth/validate - Validar token
+router.post("/validate", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization
 
-    const userInfoUrl = `https://${COGNITO_DOMAIN}/oauth2/userInfo`;
-    
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No token provided" })
+    }
+
+    const token = authHeader.split(" ")[1]
+
+    // Validar token con Cognito
+    const cognitoDomain = process.env.COGNITO_DOMAIN
+    const userInfoUrl = `https://${cognitoDomain}/oauth2/userInfo`
+
     const response = await axios.get(userInfoUrl, {
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
+        Authorization: `Bearer ${token}`,
+      },
+    })
 
-    console.log('[AUTH] Token validated successfully');
-    res.json({ valid: true, user: response.data });
+    res.json({
+      valid: true,
+      user: response.data,
+    })
   } catch (error) {
-    console.error('[AUTH] Validation error:', error.response?.data || error.message);
-    res.status(401).json({ 
+    console.error("[v0] Error en /api/auth/validate:", error.response?.data || error.message)
+    res.status(401).json({
       valid: false,
-      error: 'Invalid token'
-    });
+      error: "Invalid token",
+    })
   }
-});
+})
 
-module.exports = router;
+module.exports = router

@@ -69,6 +69,12 @@ router.get("/users", requireAdmin, async (req, res) => {
 // Actualizar créditos de usuario
 router.patch("/users/:userId/credits", requireAdmin, async (req, res) => {
   try {
+
+    console.log("[v0] Full URL:", req.originalUrl)
+    console.log("[v0] Params:", req.params)
+    console.log("[v0] Body:", req.body)
+    
+
     const { userId } = req.params
     const { credits } = req.body
 
