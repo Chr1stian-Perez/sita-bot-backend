@@ -53,7 +53,7 @@ async function callGeminiAPI(prompt, conversationHistory = []) {
           data.candidates?.[0]?.content?.parts?.[0]?.text || data.candidates?.[0]?.content?.text || data.text || null
 
         if (textResponse) {
-          console.log(`[Gemini] ✅ Success with model: ${model}`)
+          console.log(`[Gemini]  Success with model: ${model}`)
           return textResponse
         }
       } catch (error) {
@@ -66,7 +66,7 @@ async function callGeminiAPI(prompt, conversationHistory = []) {
   throw new Error("All Gemini API attempts failed")
 }
 
-async function streamChat(messages, userId, res) {
+async function streamChat(messages, userId, res, ragContext = null, ragSources = []) {
   const models = [process.env.GEMINI_MODEL || "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
   const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean)
 
@@ -80,6 +80,14 @@ async function streamChat(messages, userId, res) {
           parts: [{ text: msg.content }],
         }))
 
+        if (ragContext && contents.length > 0) {
+          const lastMessage = contents[contents.length - 1]
+          if (lastMessage.role === "user") {
+            lastMessage.parts[0].text = `${ragContext}\n\nPregunta del usuario: ${lastMessage.parts[0].text}\n\nIMPORTANTE:\n- Responde de forma CONCISA y DIRECTA\n- Máximo 2-3 párrafos\n- Si usas información de las fuentes, menciona [Fuente X] al final de tu respuesta\n- No des explicaciones innecesarias, solo lo que el usuario preguntó`
+            console.log("[Gemini Stream]  RAG context injected with concise instructions")
+          }
+        }
+
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`,
           {
@@ -91,7 +99,7 @@ async function streamChat(messages, userId, res) {
                 temperature: 0.7,
                 topK: 40,
                 topP: 0.95,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 2048, // Reducir de 2048 a 800 para respuestas más cortas
               },
             }),
           },
@@ -114,6 +122,9 @@ async function streamChat(messages, userId, res) {
           const { done, value } = await reader.read()
           if (done) {
             console.log(`[Gemini Stream] Stream ended. Total chunks: ${chunkCount}`)
+            if (ragSources.length > 0) {
+              res.write(`data: ${JSON.stringify({ sources: ragSources })}\n\n`)
+            }
             break
           }
 
@@ -132,7 +143,6 @@ async function streamChat(messages, userId, res) {
 
                 if (text) {
                   chunkCount++
-                  console.log(`[Gemini Stream] Chunk ${chunkCount}: ${text.substring(0, 50)}...`)
                   res.write(`data: ${JSON.stringify({ content: text })}\n\n`)
                 }
               } catch (e) {
@@ -144,7 +154,7 @@ async function streamChat(messages, userId, res) {
 
         res.write("data: [DONE]\n\n")
         res.end()
-        console.log(`[Gemini Stream] ✅ Success with model: ${model}`)
+        console.log(`[Gemini Stream]  Success with model: ${model}`)
         return
       } catch (error) {
         console.error(`[Gemini Stream] Failed with ${model}:`, error.message)
