@@ -17,7 +17,7 @@ router.get("/callback", async (req, res) => {
     const cognitoDomain = process.env.COGNITO_DOMAIN
     const clientId = process.env.COGNITO_CLIENT_ID
     const clientSecret = process.env.COGNITO_CLIENT_SECRET
-    const redirectUri = process.env.COGNITO_REDIRECT_URI || "https://d3ay28hwrswqzz.cloudfront.net/auth/callback"
+    const redirectUri = process.env.COGNITO_REDIRECT_URI || "https://d5ka2kad2zert.cloudfront.net/auth/callback"
 
     // Intercambiar código por tokens
     const tokenUrl = `https://${cognitoDomain}/oauth2/token`

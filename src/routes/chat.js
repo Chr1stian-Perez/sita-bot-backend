@@ -4,6 +4,7 @@ const { streamChat } = require("../services/gemini")
 const { extractUserIdFromToken } = require("../utils/jwt")
 const { deductCredits, getUserCredits } = require("../services/rds")
 const { logUserActivity } = require("../services/admin-rds")
+const { searchSimilarDocuments, buildContextFromResults, isTechnicalSupportQuery } = require("../services/rag-search")
 
 router.post("/", async (req, res) => {
   try {
@@ -39,12 +40,33 @@ router.post("/", async (req, res) => {
       return res.status(402).json({ error: "Insufficient credits" })
     }
 
+    let ragContext = null
+    let ragSources = []
+    const lastUserMessage = messages[messages.length - 1]?.content || ""
+
+    if (isTechnicalSupportQuery(lastUserMessage)) {
+      console.log("[API Chat] Technical support question detected, searching knowledge base...")
+      try {
+        const results = await searchSimilarDocuments(lastUserMessage, 3)
+        if (results.length > 0) {
+          const ragData = await buildContextFromResults(results)
+          ragContext = ragData.context
+          ragSources = ragData.sources
+          console.log("[API Chat] RAG context prepared with", results.length, "documents")
+        } else {
+          console.log("[API Chat] No relevant documents found in knowledge base")
+        }
+      } catch (ragError) {
+        console.error("[API Chat] RAG search failed:", ragError)
+      }
+    }
+
     res.setHeader("Content-Type", "text/event-stream")
     res.setHeader("Cache-Control", "no-cache")
     res.setHeader("Connection", "keep-alive")
 
     console.log("[API Chat] Starting stream...")
-    await streamChat(messages, userId, res)
+    await streamChat(messages, userId, res, ragContext, ragSources)
   } catch (error) {
     console.error("[API Chat Error]:", error)
     if (!res.headersSent) {
